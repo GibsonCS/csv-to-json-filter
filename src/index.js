@@ -7,6 +7,7 @@ const BASE_PATH = process.cwd();
 const FILES_FOLDER = "./uploads";
 const defaultFolder = join(BASE_PATH, FILES_FOLDER);
 
+//CSV columns that will be processed
 const csvKeys = ["Respondent", "Professional"];
 
 const view = new View();

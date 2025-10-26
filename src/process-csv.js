@@ -1,10 +1,11 @@
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, read } from "node:fs";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import csvtojson from "csvtojson";
 import { statSync } from "node:fs";
+import StreamConcat from "stream-concat";
 
 export default class ProcessCSV {
   #defaultFolder;
@@ -13,29 +14,40 @@ export default class ProcessCSV {
   }
 
   async execute(csvKeys, progressNotifier) {
-    const filesDir = await readdir(this.#defaultFolder);
-    const filePath = join(this.#defaultFolder, filesDir[0]);
+    const stream = await this.#prepareStreams();
 
-    if (!filePath) throw new Error("file not found!");
+    const filesSize = this.#getFilesSize(await readdir(this.#defaultFolder));
 
-    const fileSize = statSync(filePath).size;
-
-    await this.#runPipeline({ filePath, csvKeys, progressNotifier, fileSize });
+    await this.#runPipeline({ stream, filesSize, csvKeys, progressNotifier });
   }
 
-  #normalizeCSVSeparator() {
-    let firstChunkIsProcessed = false;
-    let separator = ",";
+  async #prepareStreams() {
+    const streams = [];
+
+    const filesDir = await readdir(this.#defaultFolder);
+    if (!filesDir) throw new Error("file not found!");
+
+    filesDir.forEach((file) =>
+      streams.push(createReadStream(join(this.#defaultFolder, file)))
+    );
+
+    return new StreamConcat(streams);
+  }
+
+  #getFilesSize(streams) {
+    return streams
+      .map((stream) => statSync(join(this.#defaultFolder, stream)).size)
+      .reduce((prev, current) => prev + current, 0);
+  }
+
+  #handleProgress({ progressNotifier, filesSize }) {
+    let progressAlready = 0;
 
     return new Transform({
       transform(chunk, _, callback) {
-        if (!firstChunkIsProcessed) {
-          const text = chunk.toString();
-          if (text.includes(";")) separator = ",";
-          firstChunkIsProcessed = true;
-        }
-        const dataWithCommon = chunk.toString().replace(/[;]/g, separator);
-        callback(null, dataWithCommon);
+        progressAlready += chunk.length;
+        progressNotifier.emit("update", { progressAlready, filesSize });
+        callback(null, chunk);
       },
     });
   }
@@ -53,40 +65,14 @@ export default class ProcessCSV {
     });
   }
 
-  #handleProgress({ progressNotifier, fileSize }) {
-    let progressAlready = 0;
-
-    return new Transform({
-      transform(chunk, _, callback) {
-        progressAlready += chunk.length;
-        progressNotifier.emit("update", { progressAlready, fileSize });
-        callback(null, chunk);
-      },
-    });
-  }
-
-  // #handleProgress({ progressNotifier, fileSize }) {
-  //   let progressAlready = 0;
-
-  //   async function* process(source) {
-  //     for await (const chunk of source) {
-  //       progressAlready += chunk.length;
-  //       progressNotifier.emit("update", { progressAlready, fileSize });
-
-  //       yield chunk;
-  //     }
-  //   }
-  //   return process;
-  // }
-
-  async #runPipeline({ filePath, csvKeys, progressNotifier, fileSize }) {
+  async #runPipeline({ stream, filesSize, csvKeys, progressNotifier }) {
     await pipeline(
-      createReadStream(filePath),
-      // this.#normalizeCSVSeparator(),
+      stream,
+      this.#handleProgress({ progressNotifier, filesSize }),
       csvtojson(),
       this.#transformJSON(csvKeys),
-      this.#handleProgress({ progressNotifier, fileSize }),
       createWriteStream("./docs/final.json")
     );
+    progressNotifier.emit("done");
   }
 }

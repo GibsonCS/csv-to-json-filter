@@ -9,12 +9,13 @@ export default class View {
   }
 
   initialize() {
-    this.buildInterface(), this.buildProgressBar();
+    this.buildInterface();
+    this.buildProgressBar();
   }
 
   buildInterface() {
     const screen = (this.screen = blessed.screen());
-    screen.key(["scape", "q", "C-c"], () => process.exit(0));
+    screen.key(["escape", "q", "C-c"], () => process.exit(0));
     screen.render();
   }
 
@@ -22,23 +23,24 @@ export default class View {
     this.progressBar = contrib.gauge({
       label: "Progress",
       showLabel: true,
+      width: "50%",
+      height: 5,
+      top: "center",
+      left: "center",
     });
 
     this.screen.append(this.progressBar);
     this.screen.render();
   }
 
-  onProgressUpdated({ progressAlready, fileSize }) {
-    const alreadyProcessed = Math.ceil((progressAlready / fileSize) * 100);
+  onProgressUpdated({ progressAlready, filesSize }) {
+    const alreadyProcessed = Math.ceil((progressAlready / filesSize) * 100);
 
     if (this.lastProgressUpdate === alreadyProcessed) return;
 
     this.lastProgressUpdate = alreadyProcessed;
 
-    this.progressBar.setStack([
-      { percent: alreadyProcessed, stroke: "green" },
-      { percent: 100 - alreadyProcessed, stroke: "white" },
-    ]);
+    this.progressBar.setData([alreadyProcessed]);
 
     this.screen.render();
   }

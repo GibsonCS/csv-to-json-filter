@@ -12,8 +12,12 @@ export default class Controller {
     await controller.#init();
   }
 
-  handleProgress({ progressAlready, fileSize }) {
-    this.view.onProgressUpdated({ progressAlready, fileSize });
+  handleProgress({ progressAlready, filesSize }) {
+    this.view.onProgressUpdated({ progressAlready, filesSize });
+  }
+
+  onDone() {
+    this.view.screen.destroy();
   }
 
   async #init() {
@@ -22,6 +26,7 @@ export default class Controller {
     this.view.initialize();
 
     progressNotifier.on("update", this.handleProgress.bind(this));
+    progressNotifier.on("done", this.onDone.bind(this));
 
     await this.service.execute(this.csvKeys, progressNotifier);
   }
